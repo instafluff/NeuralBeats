@@ -1,0 +1,108 @@
+<html>
+  <head>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script src="/javascripts/Tone.min.js"></script>
+    <script src="/javascripts/MidiConvert.js"></script>
+    <script src="/javascripts/brain.js"></script>
+    <script>
+      "use strict";
+      window.onload = function () {
+        var midiFiles = [
+          "/midi/windwaker.mid",
+          "/midi/windfall_island.mid",
+          "/midi/DragonRoostIslandGMv1_1.mid",
+          "/midi/Wind_Waker_-_Grandma.mid",
+          "/midi/LoZWW_Outset_Island.mid"
+        ];
+        var midiData = [];
+
+        var counter = midiFiles.length;
+        midiFiles.forEach( file => {
+          MidiConvert.load( file ).then(( midi ) => {
+            midiData.push( midi );
+            counter--;
+            if( counter == 0 ) {
+              trainNet( midiData );
+            }
+          });
+        });
+
+        // MidiConvert.load("/midi/windwaker.mid", function(midi) {
+        //   var numSynths = midi.tracks.length;
+        //   var synth = new Tone.PolySynth(numSynths).toMaster();
+        //   // console.log( midi.tracks.length );
+        //   // console.log(midi);
+        //   // $("#midiJson").text(JSON.stringify(midi));
+        //
+        //   // make sure you set the tempo before you schedule the events
+        //   Tone.Transport.bpm.value = midi.header.bpm;
+        //   // pass in the note events from one of the tracks as the second argument to Tone.Part
+        //   midi.tracks.forEach( track => {
+        //     var volumeChanges = track.controlChanges[ "7" ] || [{"number":7, "time":0, value:1}];
+        //     // console.log(volumeChanges);
+        //     var midiPart = new Tone.Part(function(time, note) {
+        //       //use the events to play the synth
+        //       // find the volumeChange after the time
+        //       var ctrl = volumeChanges.filter( x => x.time < time ).pop();
+        //       synth.triggerAttackRelease(note.name, note.duration, time, note.velocity * ctrl.value );
+        //     }, track.notes).start();
+        //   });
+        //
+        //   // start the transport to hear the events
+        //   Tone.Transport.start();
+        // });
+      };
+
+      function trainNet( data ) {
+        var processedData = [];
+        data.forEach( song => {
+          var mainTrack = song.tracks.find( track => track.length > 5 );
+          var processedNotes = mainTrack.notes.map( note => note.name );// + "_" + Math.floor( song.bpm * note.duration ) );
+          processedData = processedData.concat( processedNotes );
+        } );
+        var orderedData = [];
+        for( var i = 0, len = processedData.length; i < len - 4; i++ ) {
+          orderedData.push( {
+            input: processedData[ i ] + processedData[ i + 1 ] + processedData[ i + 2 ],
+            // encode( processedData[ i ] ),// + " " + processedData[ i + 1 ] + " " + processedData[ i + 2 ],
+            output: processedData[ i + 3 ]
+          });
+        }
+        console.log( orderedData );
+        // console.log( processedData );
+        var net = new brain.recurrent.LSTM();
+        net.train(orderedData, {
+          iterations: 100,    // the maximum times to iterate the training data --> number greater than 0
+          errorThresh: 0.02,
+					log: ( x => console.log( x ) )
+        });
+        // console.log( data );
+        var generatedNotes = [];
+        var startNote = getRandomInt( processedData.length - 4 );
+        var output = net.run( processedData[ startNote ] + processedData[ startNote + 1 ] + processedData[ startNote + 2 ] );
+        console.log( output );
+        // var lastGeneratedNote = processedData[ startNote ];// processedData[ startNote ] + " " + processedData[ startNote + 1 ] + " " + processedData[ startNote + 2 ];
+        // for( var i = 0; i < 100; i++ ) {
+        //   console.log( "Input:", lastGeneratedNote );
+        //   var output = net.run( lastGeneratedNote );
+        //   console.log( "Output:", output );
+        //   lastGeneratedNote = output;
+        //   generatedNotes.push( lastGeneratedNote );
+        // }
+        console.log( generatedNotes );
+        return net;
+      }
+
+      function encode(arg) {
+         return arg.split('').map(x => (x.charCodeAt(0) / 255));
+      }
+
+      function getRandomInt(max) {
+  		  return Math.floor(Math.random() * Math.floor(max));
+  		}
+    </script>
+  </head>
+  <body>
+    <div id="midiJson"></div>
+  </body>
+</html>
